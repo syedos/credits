@@ -1,0 +1,30 @@
+{
+  "name": "@syedos/credits",
+  "version": "0.1.0",
+  "description": "See all your startup API credits in one terminal command. Local-only MCP server.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "credits": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["mcp", "credits", "billing", "startup", "openai", "anthropic", "aws", "developer-tools"],
+  "author": "syedos",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@aws-sdk/client-cost-explorer": "^3.750.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
