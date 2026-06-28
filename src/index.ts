@@ -26,7 +26,7 @@ const server = new McpServer({
 
 server.tool(
   'get_credits',
-  'Get remaining credit balances across all providers (manual grants + API-polled). Returns a table grouped by category with granted, remaining, monthly spend, and expiry.',
+  'Get remaining credit balances across all providers (manual grants + API-polled). Returns a table of granted, remaining, status and use — cash credits totaled, perks listed separately.',
   {},
   async () => {
     const config = await loadConfig()
@@ -44,15 +44,12 @@ server.tool(
 
     await Promise.allSettled(
       config.providers.map(async (p) => {
-        if (resolveKind(p) === 'api') {
+        if (resolveKind(p) === 'api' && POLLERS[p.id]) {
           const poller = POLLERS[p.id]
-          if (!poller) {
-            errors.push(`${p.name}: no API integration for "${p.id}" — add it with kind:"manual" to track by hand`)
-            return
-          }
           try {
+            const apiKey = p.apiKey ?? (p.apiKeyEnv ? process.env[p.apiKeyEnv] : undefined) ?? ''
             const snap = await poller({
-              apiKey: p.apiKey ?? '',
+              apiKey,
               creditGrant: p.creditGrant,
               creditGrantDate: p.creditGrant ? new Date(p.creditGrantDate ?? Date.now()) : undefined,
               creditExpiry: p.creditExpiry,
@@ -60,9 +57,13 @@ server.tool(
             snap.name = p.name || snap.name
             snap.category = p.category
             snap.url = p.url
+            snap.type = p.type
+            snap.status = p.status
+            snap.use = p.use
             snapshots.push(snap)
           } catch (err) {
-            errors.push(`${p.name}: ${err instanceof Error ? err.message : String(err)}`)
+            snapshots.push(manualSnapshot(p))
+            errors.push(`${p.name}: live poll failed (${err instanceof Error ? err.message : String(err)}); showing last-known`)
           }
         } else {
           snapshots.push(manualSnapshot(p))
@@ -98,13 +99,17 @@ server.tool(
     remaining: z.number().optional().describe('Current remaining balance in USD if known (manual only; seeds the spend log)'),
     credit_grant_date: z.string().optional().describe('Date credits were granted (ISO 8601, e.g. 2026-01-15)'),
     credit_expiry: z.string().optional().describe('Date credits expire (ISO 8601, e.g. 2027-01-15)'),
+    type: z.enum(['credit', 'perk']).optional().describe('"credit" = spendable cash credits (counted in totals); "perk" = non-cash free access/seats (listed separately, not summed).'),
+    status: z.enum(['active', 'pending', 'expired']).optional().describe('Grant status. Default: active.'),
+    use: z.string().optional().describe('What the credits are for, e.g. "AI", "GPU", "Hosting", "Storage", "DB", "Payments", "All".'),
+    api_key_env: z.string().optional().describe('Name of an env var holding the API key (e.g. "OPENROUTER_API_KEY") — used instead of storing the raw key.'),
   },
-  async ({ provider, name, kind, category, url, api_key, credit_grant, remaining, credit_grant_date, credit_expiry }) => {
+  async ({ provider, name, kind, type, status, use, category, url, api_key, api_key_env, credit_grant, remaining, credit_grant_date, credit_expiry }) => {
     const config = await loadConfig()
     const meta = SUPPORTED_PROVIDERS.find(p => p.id === provider)
     const resolvedName = name ?? meta?.name ?? titleCase(provider)
     const hasPoller = !!POLLERS[provider]
-    const resolvedKind: 'manual' | 'api' = kind ?? (hasPoller && api_key ? 'api' : 'manual')
+    const resolvedKind: 'manual' | 'api' = kind ?? ((hasPoller && (api_key || api_key_env)) ? 'api' : 'manual')
 
     let granted = credit_grant ?? undefined
     let spend: ProviderConfig['spend']
@@ -129,9 +134,13 @@ server.tool(
       id: provider,
       name: resolvedName,
       kind: resolvedKind,
+      type,
+      status,
+      use,
       category,
       url,
       apiKey: api_key,
+      apiKeyEnv: api_key_env,
       creditGrant: granted,
       creditGrantDate: credit_grant_date,
       creditExpiry: credit_expiry,

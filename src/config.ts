@@ -10,13 +10,20 @@ export interface SpendEntry {
   note?: string
 }
 
+export type CreditType = 'credit' | 'perk'
+export type GrantStatus = 'active' | 'pending' | 'expired'
+
 export interface ProviderConfig {
   id: string
   name: string
   kind?: ProviderKind
+  type?: CreditType
+  status?: GrantStatus
+  use?: string
   category?: string
   url?: string
   apiKey?: string
+  apiKeyEnv?: string
   creditGrant?: number
   creditGrantDate?: string
   creditExpiry?: string

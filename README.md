@@ -3,14 +3,18 @@
 See all your startup API credits in one terminal command.
 
 ```
-Provider        Granted      Remaining    Spend/mo     Expiry
-──────────────────────────────────────────────────────────────────────
-OpenAI            $10,000.00    $7,200.00    $1,400.00     2026-03-01
-Anthropic         $25,000.00   $18,100.00    $4,500.00     2026-06-30
-AWS Bedrock      $100,000.00   $72,340.00    $8,200.00     2026-12-31
-Vercel             $3,500.00    $3,100.00       $80.00     —
-──────────────────────────────────────────────────────────────────────
-Total            $138,500.00  $100,740.00   $14,180.00
+Provider                 Granted     Remaining  Status     Use
+────────────────────────────────────────────────────────────────────
+Azure (MSFT Startups)  $250,000.00  $219,877.00  active     All        ↗
+Modal                    $5,000.00    $4,661.41  active     GPU        ↗
+OpenRouter               $1,040.00       $76.20  active     AI         ↗
+Lambda                   $7,500.00    $7,500.00  pending    GPU        ↗
+OpenAI                   $5,000.00        $0.00  expired    AI         ↗
+────────────────────────────────────────────────────────────────────
+Total (active)         $256,040.00  $224,614.61
+
+PERKS (non-cash)
+Tailscale (1yr free)            —            —  active     Networking ↗
 ```
 
 Local-only MCP server. Keys never leave your machine.
@@ -79,8 +83,8 @@ The `credit_grant` and `credit_expiry` fields help calculate remaining balance w
 
 - **Manual providers**: remaining = `granted − Σ(logged spend)`, tracked entirely in local config — no key required
 - **API providers**: poll the provider's billing/usage API; remaining = grant − spend since grant date
-- The table is grouped by category, with the remaining balance color-coded and linked to each service
-- All config/keys stored in `~/.credits/config.json` (mode 0600)
+- The table shows **status** (active/pending/expired) and **use**; cash **credits** are totaled while **perks** (free access/seats) are listed separately and not summed; the remaining balance is color-coded and links to each service
+- All config/keys stored in `~/.credits/config.json` (mode 0600); API keys can also be referenced by env-var name via `apiKeyEnv` so they stay only in your shell token store
 - No backend, no SaaS, no telemetry
 
 ## Supported Providers

@@ -7,6 +7,9 @@ export interface CreditSnapshot {
   expiry: string | null
   category?: string
   url?: string
+  type?: 'credit' | 'perk'
+  status?: 'active' | 'pending' | 'expired'
+  use?: string
 }
 
 export interface PollerOptions {

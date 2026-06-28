@@ -11,7 +11,7 @@ const STYLE = {
   red: `${ESC}[31m`,
 }
 
-const COL = { name: 24, num: 13, exp: 11 }
+const COL = { name: 22, num: 12, status: 9, use: 11 }
 
 export function sumSpend(spend?: SpendEntry[]): number {
   return (spend ?? []).reduce((acc, s) => acc + (Number(s.amount) || 0), 0)
@@ -39,6 +39,9 @@ export function manualSnapshot(p: ProviderConfig): CreditSnapshot {
     expiry: p.creditExpiry ?? null,
     category: p.category,
     url: p.url,
+    type: p.type,
+    status: p.status,
+    use: p.use,
   }
 }
 
@@ -46,21 +49,6 @@ function money(v: number | null): string {
   return v != null
     ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : '—'
-}
-
-function isExpired(expiry: string | null | undefined): boolean {
-  if (!expiry) return false
-  const d = new Date(expiry)
-  return !Number.isNaN(d.getTime()) && d.getTime() < Date.now()
-}
-
-function remainingColor(s: CreditSnapshot): string {
-  if (isExpired(s.expiry)) return STYLE.red
-  if (s.granted == null || s.remaining == null || s.granted <= 0) return ''
-  const ratio = s.remaining / s.granted
-  if (ratio >= 0.5) return STYLE.green
-  if (ratio >= 0.25) return STYLE.yellow
-  return STYLE.red
 }
 
 function hyperlink(url: string | undefined, text: string, on: boolean): string {
@@ -76,74 +64,119 @@ function padStartV(s: string, n: number): string {
   return s.length >= n ? s : ' '.repeat(n - s.length) + s
 }
 
+function clip(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + '…' : s
+}
+
+type Status = 'active' | 'pending' | 'expired'
+
+function statusOf(s: CreditSnapshot): Status {
+  return s.status === 'pending' || s.status === 'expired' ? s.status : 'active'
+}
+
+function statusColor(st: Status): string {
+  if (st === 'active') return STYLE.green
+  if (st === 'pending') return STYLE.yellow
+  return STYLE.red
+}
+
+function remainingColor(s: CreditSnapshot): string {
+  const st = statusOf(s)
+  if (st === 'expired') return STYLE.red
+  if (st === 'pending') return STYLE.dim
+  if (s.granted == null || s.remaining == null || s.granted <= 0) return ''
+  const ratio = s.remaining / s.granted
+  if (ratio >= 0.5) return STYLE.green
+  if (ratio >= 0.25) return STYLE.yellow
+  return STYLE.red
+}
+
 export interface RenderOptions {
   decorate?: boolean
+}
+
+function headerRow(decorate: boolean): string {
+  const cells =
+    padEndV('Provider', COL.name) + '  ' +
+    padStartV('Granted', COL.num) + '  ' +
+    padStartV('Remaining', COL.num) + '  ' +
+    padEndV('Status', COL.status) + '  ' +
+    padEndV('Use', COL.use)
+  return (decorate ? STYLE.dim : '') + cells + (decorate ? STYLE.reset : '')
+}
+
+function dataRow(s: CreditSnapshot, decorate: boolean): string {
+  const nameCell = padEndV(clip(s.name, COL.name), COL.name)
+  const grantedCell = padStartV(money(s.granted), COL.num)
+
+  const remPlain = padStartV(money(s.remaining), COL.num)
+  let remCell = decorate ? `${STYLE.bold}${remainingColor(s)}${remPlain}${STYLE.reset}` : remPlain
+  remCell = hyperlink(s.url, remCell, decorate)
+
+  const st = statusOf(s)
+  const stPlain = padEndV(st, COL.status)
+  const stCell = decorate ? `${statusColor(st)}${stPlain}${STYLE.reset}` : stPlain
+
+  const useCell = padEndV(s.use ?? s.category ?? '—', COL.use)
+  const arrow = s.url ? hyperlink(s.url, '↗', decorate) : ' '
+
+  return nameCell + '  ' + grantedCell + '  ' + remCell + '  ' + stCell + '  ' + useCell + '  ' + arrow
 }
 
 export function renderTable(snapshots: CreditSnapshot[], opts: RenderOptions = {}): string {
   const decorate = opts.decorate ?? true
   const indent = '  '
 
-  const headcells =
-    padEndV('Provider', COL.name) + '  ' +
-    padStartV('Granted', COL.num) + '  ' +
-    padStartV('Remaining', COL.num) + '  ' +
-    padStartV('Spend/mo', COL.num) + '  ' +
-    padEndV('Expiry', COL.exp)
-  const rule = '─'.repeat(indent.length + headcells.length + 2)
+  const credits = snapshots.filter(s => s.type !== 'perk')
+  const perks = snapshots.filter(s => s.type === 'perk')
+
+  const rank: Record<Status, number> = { active: 0, pending: 1, expired: 2 }
+  credits.sort((a, b) => {
+    const ra = rank[statusOf(a)]
+    const rb = rank[statusOf(b)]
+    if (ra !== rb) return ra - rb
+    return (b.remaining ?? -1) - (a.remaining ?? -1)
+  })
+
+  const header = headerRow(decorate)
+  const visibleLen = header.replace(/\x1b\[[0-9]*m/g, '').length
+  const rule = '─'.repeat(indent.length + visibleLen + 2)
 
   let out = ''
-  out += indent + (decorate ? STYLE.dim : '') + headcells + (decorate ? STYLE.reset : '') + '\n'
+  out += indent + header + '\n'
   out += rule + '\n'
 
-  // group by category, preserving first-seen order
-  const groups: { cat: string; rows: CreditSnapshot[] }[] = []
-  const byCat = new Map<string, CreditSnapshot[]>()
-  for (const s of snapshots) {
-    const cat = s.category && s.category.trim() ? s.category : 'Other'
-    if (!byCat.has(cat)) {
-      const arr: CreditSnapshot[] = []
-      byCat.set(cat, arr)
-      groups.push({ cat, rows: arr })
-    }
-    byCat.get(cat)!.push(s)
-  }
+  for (const s of credits) out += indent + dataRow(s, decorate) + '\n'
 
-  let tg = 0, tr = 0, ts = 0
-  let hasG = false, hasR = false, hasS = false
-
-  for (const g of groups) {
-    out += '\n' + indent + (decorate ? STYLE.dim : '') + g.cat.toUpperCase() + (decorate ? STYLE.reset : '') + '\n'
-    for (const s of g.rows) {
-      const nameText = s.name.length > COL.name ? s.name.slice(0, COL.name - 1) + '…' : s.name
-      const nameCell = padEndV(nameText, COL.name)
-      const grantedCell = padStartV(money(s.granted), COL.num)
-
-      const remPlain = padStartV(money(s.remaining), COL.num)
-      let remCell = decorate ? `${STYLE.bold}${remainingColor(s)}${remPlain}${STYLE.reset}` : remPlain
-      remCell = hyperlink(s.url, remCell, decorate)
-
-      const spendCell = padStartV(money(s.periodSpend), COL.num)
-
-      let expCell = padEndV(s.expiry ?? '—', COL.exp)
-      if (decorate && isExpired(s.expiry)) expCell = `${STYLE.red}${expCell}${STYLE.reset}`
-
-      const arrow = s.url ? hyperlink(s.url, '↗', decorate) : ' '
-
-      out += indent + nameCell + '  ' + grantedCell + '  ' + remCell + '  ' + spendCell + '  ' + expCell + '  ' + arrow + '\n'
-
-      if (s.granted != null) { tg += s.granted; hasG = true }
-      if (s.remaining != null) { tr += s.remaining; hasR = true }
-      if (s.periodSpend != null) { ts += s.periodSpend; hasS = true }
+  let totalGranted = 0
+  let totalRemaining = 0
+  let pendingRemaining = 0
+  for (const s of credits) {
+    const st = statusOf(s)
+    if (st === 'active') {
+      if (s.granted != null) totalGranted += s.granted
+      if (s.remaining != null) totalRemaining += s.remaining
+    } else if (st === 'pending' && s.remaining != null) {
+      pendingRemaining += s.remaining
     }
   }
 
   out += rule + '\n'
   out += indent +
-    padEndV('Total', COL.name) + '  ' +
-    padStartV(money(hasG ? tg : null), COL.num) + '  ' +
-    (decorate ? STYLE.bold : '') + padStartV(money(hasR ? tr : null), COL.num) + (decorate ? STYLE.reset : '') + '  ' +
-    padStartV(money(hasS ? ts : null), COL.num) + '\n'
+    padEndV('Total (active)', COL.name) + '  ' +
+    padStartV(money(totalGranted), COL.num) + '  ' +
+    (decorate ? STYLE.bold : '') + padStartV(money(totalRemaining), COL.num) + (decorate ? STYLE.reset : '') + '\n'
+  if (pendingRemaining > 0) {
+    out += indent +
+      padEndV('Pending', COL.name) + '  ' +
+      padStartV('—', COL.num) + '  ' +
+      (decorate ? STYLE.dim : '') + padStartV(money(pendingRemaining), COL.num) + (decorate ? STYLE.reset : '') + '\n'
+  }
+
+  if (perks.length) {
+    out += '\n' + indent + (decorate ? STYLE.dim : '') + 'PERKS (non-cash)' + (decorate ? STYLE.reset : '') + '\n'
+    for (const s of perks) out += indent + dataRow(s, decorate) + '\n'
+  }
 
   return out
 }
