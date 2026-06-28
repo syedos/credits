@@ -2,13 +2,25 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
+export type ProviderKind = 'manual' | 'api'
+
+export interface SpendEntry {
+  date: string
+  amount: number
+  note?: string
+}
+
 export interface ProviderConfig {
   id: string
   name: string
-  apiKey: string
+  kind?: ProviderKind
+  category?: string
+  url?: string
+  apiKey?: string
   creditGrant?: number
   creditGrantDate?: string
   creditExpiry?: string
+  spend?: SpendEntry[]
 }
 
 export interface Config {

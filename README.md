@@ -42,24 +42,45 @@ npm install && npm run build
 
 Once the MCP server is running, use these tools in any MCP-compatible client:
 
-- **get_credits** — show all balances
-- **add_provider** — add a provider (openai, anthropic, openrouter, xai, bedrock, vercel, supabase, neon)
+- **get_credits** — show all balances, grouped by category
+- **add_provider** — add any provider: a *manual* grant (no key) or an *API-polled* one (openai, anthropic, openrouter, xai, bedrock, vercel, supabase, neon)
+- **log_spend** — draw down a manual provider's balance
 - **remove_provider** — remove a provider
-- **list_providers** — see supported providers
+- **list_providers** — see configured + API-pollable providers
 
 ### Adding a provider
+
+Two kinds of providers:
+
+**Manual** — most startup credits (Azure, Modal, Baseten, Google Cloud…) have no balance API. Just record the grant; no key needed:
+
+```
+add_provider provider=modal name=Modal category=Compute url=https://modal.com/settings/usage credit_grant=5000
+```
+
+Draw it down over time as you spend:
+
+```
+log_spend provider=modal amount=300        # spent $300
+log_spend provider=modal remaining=4200    # or set the new balance — the delta is computed for you
+```
+
+Remaining is always `granted − Σ(spend)`, and every entry is dated, so you get a drawdown history for free.
+
+**API-polled** — supported providers fetch remaining live from their billing API:
 
 ```
 add_provider provider=openai api_key=sk-... credit_grant=10000 credit_expiry=2026-03-01
 ```
 
-The `credit_grant` and `credit_expiry` fields are optional but help calculate remaining balance when the provider API doesn't expose it directly.
+The `credit_grant` and `credit_expiry` fields help calculate remaining balance when the provider API doesn't expose it directly.
 
 ## How it works
 
-- Polls each provider's billing/usage API directly
-- Calculates remaining = grant - spend since grant date
-- All keys stored in `~/.credits/config.json` (mode 0600)
+- **Manual providers**: remaining = `granted − Σ(logged spend)`, tracked entirely in local config — no key required
+- **API providers**: poll the provider's billing/usage API; remaining = grant − spend since grant date
+- The table is grouped by category, with the remaining balance color-coded and linked to each service
+- All config/keys stored in `~/.credits/config.json` (mode 0600)
 - No backend, no SaaS, no telemetry
 
 ## Supported Providers

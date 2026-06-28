@@ -5,6 +5,8 @@ export interface CreditSnapshot {
   remaining: number | null
   periodSpend: number | null
   expiry: string | null
+  category?: string
+  url?: string
 }
 
 export interface PollerOptions {
